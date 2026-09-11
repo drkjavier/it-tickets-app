@@ -1,0 +1,245 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String
+  name          String
+  role          Role      @default(USER)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  createdTickets      Ticket[]        @relation("TicketCreator")
+  assignedTickets     Ticket[]        @relation("TicketAssignee")
+  comments            TicketComment[]
+  taggedTickets       TicketTag[]
+  notifications       Notification[]
+  sentNotifications    Notification[]  @relation("NotificationSender")
+
+  @@map("users")
+}
+
+model Project {
+  id            String   @id @default(cuid())
+  name          String
+  abbreviation  String   @unique
+  repoUrl       String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  repos         Repo[]
+  publishedUrls PublishedUrl[]
+  envVars       String?
+  environments  Environment[]
+  tickets       Ticket[]
+
+  @@map("projects")
+}
+
+model Repo {
+  id        String   @id @default(cuid())
+  name      String
+  url       String
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@map("repos")
+}
+
+model PublishedUrl {
+  id        String   @id @default(cuid())
+  name      String
+  url       String
+  type      PublishedUrlType
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@map("published_urls")
+}
+
+model Environment {
+  id         String         @id @default(cuid())
+  name       String
+  url        String
+  type       EnvironmentType
+  projectId  String
+  project    Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@map("environments")
+}
+
+model Ticket {
+  id              String          @id @default(cuid())
+  code            String          @unique
+  title           String
+  description     String
+  priority        Priority
+  status          TicketStatus    @default(CREATED)
+  rating          Int?
+  projectId       String
+  project         Project         @relation(fields: [projectId], references: [id])
+  createdById     String
+  createdBy       User            @relation("TicketCreator", fields: [createdById], references: [id])
+  assignedToId    String?
+  assignedTo      User?           @relation("TicketAssignee", fields: [assignedToId], references: [id])
+  durationSeconds Int?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  statusHistory   TicketStatusHistory[]
+  subtasks        TicketSubtask[]
+  comments        TicketComment[]
+  taggedUsers     TicketTag[]
+  resolutions     TicketResolution[]
+
+  @@map("tickets")
+}
+
+model TicketResolution {
+  id          String         @id @default(cuid())
+  ticketId    String
+  ticket      Ticket         @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  type        ResolutionType
+  branchName  String?
+  branchType  BranchType?
+  dbScript    String?
+  createdAt   DateTime       @default(now())
+
+  @@map("ticket_resolutions")
+}
+
+model TicketStatusHistory {
+  id                String       @id @default(cuid())
+  ticketId          String
+  ticket            Ticket       @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  fromStatus        TicketStatus?
+  toStatus          TicketStatus
+  durationSeconds   Int?
+  createdAt         DateTime     @default(now())
+
+  @@map("ticket_status_history")
+}
+
+model TicketSubtask {
+  id          String   @id @default(cuid())
+  ticketId    String
+  ticket      Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  title       String
+  isCompleted Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("ticket_subtasks")
+}
+
+model TicketComment {
+  id        String   @id @default(cuid())
+  ticketId  String
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("ticket_comments")
+}
+
+model TicketTag {
+  id        String   @id @default(cuid())
+  ticketId  String
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@unique([ticketId, userId])
+  @@map("ticket_tags")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  type      String
+  title     String
+  message   String
+  payload   Json?
+  read      Boolean  @default(false)
+  sentById  String?
+  sentBy    User?    @relation("NotificationSender", fields: [sentById], references: [id])
+  createdAt DateTime @default(now())
+
+  @@map("notifications")
+}
+
+model EmailDailyUsage {
+  id        Int      @id @default(autoincrement())
+  date      DateTime @db.Date
+  count     Int      @default(0)
+  provider  String   @default("brevo")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([date])
+  @@map("email_daily_usage")
+}
+
+enum Role {
+  ADMIN
+  IT
+  USER
+}
+
+enum TicketStatus {
+  CREATED
+  EN_COURSE
+  IN_REVIEW
+  REJECTED
+  TERMINATED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum EnvironmentType {
+  DEV
+  STAGING
+  PROD
+}
+
+enum PublishedUrlType {
+  API
+  WEB
+  DB
+  OTHER
+}
+
+enum ResolutionType {
+  CODE
+  DATABASE
+  INSTALLATION
+  REPAIR
+}
+
+enum BranchType {
+  BACKEND
+  FRONTEND
+}
